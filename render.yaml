@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: pulsedesk
+    runtime: ruby
+    plan: free
+    buildCommand: bash bin/render-build.sh
+    startCommand: bash bin/render-start.sh
+    healthCheckPath: /up
+    envVars:
+      - key: RUBY_VERSION
+        value: 3.4.7
+      - key: RAILS_ENV
+        value: production
+      - key: SECRET_KEY_BASE
+        generateValue: true
+      - key: RAILS_LOG_TO_STDOUT
+        value: "true"
+      - key: RAILS_SERVE_STATIC_FILES
+        value: "true"
+      - key: WEB_CONCURRENCY
+        value: "0"

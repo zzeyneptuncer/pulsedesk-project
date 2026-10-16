@@ -1,0 +1,15 @@
+<section class="page-heading"><div><div class="eyebrow">OPERASYON MERKEZİ</div><h1>Her talep kontrol altında.</h1><p>Ekibin iş yükünü, SLA hedeflerini ve müşteri yanıtlarını tek yerden yönetin.</p></div><%= link_to "+ Yeni talep", new_ticket_path, class: "button primary" %></section>
+<section class="metrics">
+  <div class="metric"><span>Toplam Talep</span><strong><%= @total %></strong><small>Tüm destek kayıtları</small></div>
+  <div class="metric danger"><span>SLA Aşımı Olanlar</span><strong><%= @breached %></strong><small>SLA Breached · Takip gerekli</small></div>
+  <div class="metric"><span>Çözülenler</span><strong><%= @solved %></strong><small>Tamamlanan talepler</small></div>
+  <div class="metric guarded"><span>Teşekkür Filtresi ile Korunan Çözümler</span><strong><%= @protected %><em>↗</em></strong><small>Gereksiz yeniden açılma önlendi</small></div>
+</section>
+<section class="panel"><div class="panel-heading"><h2>Destek talepleri</h2><span class="muted"><%= @tickets.count %> kayıt</span></div>
+  <nav class="tabs" aria-label="Talep filtreleri"><%= link_to "Tümü", tickets_path, class: @filter.blank? ? "active" : "" %><% Ticket::STATUSES.each do |status| %><%= link_to status_label(status), tickets_path(filter: status), class: @filter == status ? "active" : "" %><% end %><%= link_to "SLA Aşımı", tickets_path(filter: "breached"), class: @filter == "breached" ? "active" : "" %></nav>
+  <div class="table-scroll"><table><thead><tr><th>TALEP / MÜŞTERİ</th><th>DURUM</th><th>ÖNCELİK</th><th>TEMSİLCİ</th><th>SLA DURUMU</th><th></th></tr></thead><tbody>
+  <% @tickets.each do |ticket| %><tr><td><%= link_to ticket.title, ticket, class: "ticket-title" %><small>#PD-<%= ticket.id.to_s.rjust(4, '0') %> · <%= ticket.customer_name %></small></td><td><span class="badge <%= ticket.status %>"><%= status_label(ticket.status) %></span></td><td><span class="priority <%= ticket.priority %>">● <%= priority_label(ticket.priority) %></span></td><td><%= ticket.assigned_agent.presence || "Atanmadı" %></td><td><%= render "sla", ticket: ticket %></td><td><%= link_to "→", ticket, aria: { label: "Talebi görüntüle" }, class: "arrow" %></td></tr><% end %>
+  <% if @tickets.empty? %><tr><td colspan="6" class="empty">Bu görünümde talep yok.</td></tr><% end %>
+  </tbody></table></div>
+</section>
+<div class="insight"><span class="insight-icon">✦</span><div><strong>Küçük bir teşekkür, büyük bir fark.</strong><p>Smart Reopen Guard, nezaket yanıtlarını tanır. Çözümünüz korunur, SLA saati gereksiz yere yeniden başlamaz.</p></div><span class="badge solved">FİLTRE AKTİF</span></div>

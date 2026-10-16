@@ -1,0 +1,1 @@
+<span class="sla <%= ticket.sla_breached? ? 'breached' : 'healthy' %>" data-controller="sla" data-sla-due-value="<%= ticket.sla_due_at.iso8601 %>" data-sla-solved-value="<%= ticket.status == 'solved' %>"><%= sla_label(ticket) %></span>

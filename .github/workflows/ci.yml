@@ -1,0 +1,22 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Prepare test database and run Minitest
+        run: |
+          chmod +x bin/rails
+          bin/rails db:test:prepare && bin/rails test
+        env:
+          RAILS_ENV: test
+      - name: Check autoloading
+        run: ruby bin/rails zeitwerk:check
+        env:
+          RAILS_ENV: test
