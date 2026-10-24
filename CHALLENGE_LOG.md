@@ -15,7 +15,10 @@
 - *"Geçen hafta Rails 8.1, SQLite, Hotwire/Turbo ve 18 Minitest testiyle çalışan temel bir Zendesk klonunu (PulseDesk) Render üzerinde canlıya aldım. Bu hafta; kelime eşleştirmesi (regex) yerine **LLM Semantik Niyet ve Sarkazm Analiz Motoru** (Groq Llama 3 + akıllı yerel fallback) ekleyeceğim; ayrıca dış AI Agent'ların API üzerinden structured incident açabildiği, AI Triage teşhisi ürettiği ve şüpheli/kritik durumlarda insana devrettiği **Agent-First & Human-in-the-Loop (HITL)** katmanını canlı ve testli olarak çalıştıracağım."*
 
 ## Yapılanlar ve kanıt
-- **Commit linkleri:** [88b5c73](https://github.com/zzeyneptuncer/pulsedesk-project/commit/88b5c731791235208bd5e6cc794a41b3d0647443) — *Fark Katmanı: LLM Semantik Sarkazm Koruması ve Agent-First HITL Altyapısı (Hafta 2)*
+- **Commit linkleri:**
+  - Fark Katmanı (LLM & Agent-First HITL): [54151e6](https://github.com/zzeyneptuncer/pulsedesk-project/commit/54151e673465534c46d5b8f9bd6ee32ed2a3503e)
+  - Sunum ve Canlı Demo Verileri: [3e978df](https://github.com/zzeyneptuncer/pulsedesk-project/commit/3e978dfd345f908d02f3f3b48d01cd82f05e58e6)
+  - [Depodaki Tüm Commit Geçmişi](https://github.com/zzeyneptuncer/pulsedesk-project/commits/main)
 - **Çalışan testler:** **25 test, 189 assertion, 0 failure, 0 error, 0 skips**
   - `AgentAndLlmIntelligenceTest`: Sarkazm tespiti, SLA acil yükseltme, samimi teşekkür koruması, Agent ticket açılışı ve HITL onay/red akışları doğrulandı.
   - `AgentApiTest`: `/api/v1/agent/tickets` REST API endpoint'i ve dashboard HITL entegrasyonu doğrulandı.
