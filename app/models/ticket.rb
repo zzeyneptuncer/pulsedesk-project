@@ -19,6 +19,9 @@ class Ticket < ApplicationRecord
   before_validation :stamp_status_change
 
   scope :breached, -> { where("(status = 'solved' AND solved_at > sla_due_at) OR (status != 'solved' AND sla_due_at < ?)", Time.current) }
+  scope :agent_sourced, -> { where(source_type: "agent") }
+  scope :sarcasm_flagged, -> { where(sarcasm_detected: true) }
+  scope :pending_hitl, -> { where(hitl_status: "pending_human_approval") }
 
   # SLA politikasının tek adresi. Şimdilik takvim saatleri kullanılır.
   def calculate_sla_deadline(from_time = Time.current)
@@ -55,27 +58,95 @@ class Ticket < ApplicationRecord
 
   def add_customer_reply!(body, customer_name:)
     with_lock do
-      prevented = status == "solved" && thank_you_only_message?(body)
-      comment = ticket_comments.create!(body: body, author_name: customer_name,
-        author_role: "customer", prevented_reopen: prevented)
+      llm_analysis = LlmTriageService.analyze_reply(body: body, ticket: self)
+      prevented = status == "solved" && llm_analysis[:should_prevent_reopen]
+
+      comment = ticket_comments.create!(
+        body: body,
+        author_name: customer_name,
+        author_role: "customer",
+        prevented_reopen: prevented,
+        sarcasm_detected: llm_analysis[:sarcasm_detected] || false,
+        ai_intent: llm_analysis[:intent],
+        ai_confidence: llm_analysis[:confidence]
+      )
+
       if prevented
         self.reopen_prevented_count += 1
       elsif %w[pending solved].include?(status)
         self.status = "open"
       end
+
+      # LLM Sarkazm veya kriz tespit ettiyse: SLA acile çekilir
+      if llm_analysis[:sarcasm_detected]
+        self.sarcasm_detected = true
+        self.ai_intent = llm_analysis[:intent]
+        self.ai_sentiment = llm_analysis[:sentiment]
+        self.priority = "urgent"
+        self.sla_due_at = calculate_sla_deadline
+      end
+
       save!
       comment
     end
   end
 
-  # Tam ifade eşleştirmesi belirsiz veya gerçek sorun içeren metinleri korumaz.
   def thank_you_only_message?(body)
-    text = body.to_s.unicode_normalize(:nfkc).downcase.tr("ı", "i").strip
-    return false if text.length > 160 || text.include?("?")
-    return false if text.match?(/\b(ama|fakat|ancak|but|hata|error|still)\b|çalişmiyor|çözülmedi|olmadi/)
-    phrases = /teşekkürler|teşekkür ederim|teşekkür ederiz|sağ olun|sağ ol|sağol|thanks|thank you|harika|süper|çözüldü|sorun çözüldü|tamam|çok|evet|işe yaradi|her şey yolunda/
-    remainder = text.gsub(phrases, "").gsub(/[\s[:punct:]👍🙏😊]+/, "")
-    text.match?(phrases) && remainder.empty?
+    LlmTriageService.analyze_reply(body: body, ticket: self)[:should_prevent_reopen]
+  end
+
+  # Otonom AI Agent'ların API üzerinden ticket açması ve AI Triage alması
+  def self.create_from_agent!(agent_id:, title:, description:, error_code: nil, context: {})
+    triage = LlmTriageService.triage_incident(
+      title: title,
+      description: description,
+      error_code: error_code,
+      context: context
+    )
+
+    ticket = new(
+      title: "[Agent Incident] #{title}",
+      description: "#{description}\n\n[Agent Metadata]\nAgent ID: #{agent_id}\nHata Kodu: #{error_code || 'N/A'}\nContext: #{context.to_json}",
+      customer_name: "AI Agent (#{agent_id})",
+      customer_email: "agent-#{agent_id.to_s.parameterize.presence || 'system'}@system.internal",
+      priority: triage[:priority] || "high",
+      source_type: "agent",
+      source_agent_id: agent_id,
+      ai_triage_diagnosis: triage[:diagnosis],
+      ai_proposed_action: triage[:proposed_action],
+      hitl_status: triage[:requires_human_approval] ? "pending_human_approval" : "approved"
+    )
+
+    ticket.save!
+    ticket
+  end
+
+  def approve_hitl_action!(approved_by:)
+    with_lock do
+      return unless hitl_status == "pending_human_approval"
+      self.hitl_status = "approved"
+      ticket_comments.create!(
+        author_name: approved_by,
+        author_role: "agent",
+        body: "✓ İnsan Mühendis Onayı Verildi (HITL). AI aksiyonu uygulandı: #{ai_proposed_action}"
+      )
+      self.status = "open" if status == "new"
+      save!
+    end
+  end
+
+  def reject_hitl_action!(rejected_by:, reason: "Manuel müdahale başlatıldı.")
+    with_lock do
+      return unless hitl_status == "pending_human_approval"
+      self.hitl_status = "rejected"
+      ticket_comments.create!(
+        author_name: rejected_by,
+        author_role: "agent",
+        body: "✗ AI Aksiyonu Reddedildi (HITL). Gerekçe: #{reason}"
+      )
+      self.status = "open" if status == "new"
+      save!
+    end
   end
 
   def simulate_five_hours!

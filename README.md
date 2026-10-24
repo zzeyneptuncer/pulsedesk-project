@@ -1,4 +1,8 @@
-# PulseDesk — Kurumsal Destek ve SLA Aort Dilimi
+# PulseDesk — Agent-First Destek ve Kurumsal SLA Omurgası
+
+[![Canlı Demo](https://img.shields.io/badge/Render-Canl%C4%B1%20Uygulama-success)](https://pulsedesk-n2v4.onrender.com/)
+
+> **Hafta 2 Güncellemesi:** Bu hafta projeye **LLM Semantik Niyet & Sarkazm Analizi** ve **Agent-First & Human-in-the-Loop (HITL)** katmanı eklenmiştir. Ayrıntılı kararlar ve zaman dökümü için [CHALLENGE_LOG.md](CHALLENGE_LOG.md) dosyasını inceleyin.
 
 [![CI](https://github.com/KULLANICI_ADI/REPO_ADI/actions/workflows/ci.yml/badge.svg)](https://github.com/KULLANICI_ADI/REPO_ADI/actions/workflows/ci.yml)
 

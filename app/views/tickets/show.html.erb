@@ -1,8 +1,156 @@
-<section class="page-heading"><div><%= link_to "← Tüm talepler", tickets_path, class: "back" %><h1><%= @ticket.title %></h1><p>#PD-<%= @ticket.id.to_s.rjust(4, '0') %> · <%= @ticket.customer_name %> · <%= @ticket.customer_email %></p></div><span class="badge <%= @ticket.status %>"><%= status_label(@ticket.status) %></span></section>
-<div class="detail-grid"><div>
-<section class="panel"><div class="panel-heading"><h2>Talep akışı</h2><span class="priority <%= @ticket.priority %>">● <%= priority_label(@ticket.priority) %></span></div><div class="flow"><% Ticket::STATUSES.each_with_index do |status, i| %><span class="<%= @ticket.status == status ? 'current' : '' %>"><b><%= i + 1 %></b><%= status_label(status) %></span><% end %></div><div class="description"><%= simple_format @ticket.description %></div><div class="actions"><% Ticket::TRANSITIONS.fetch(@ticket.status).each do |status| %><%= button_to "#{status_label(status)} olarak işaretle", transition_ticket_path(@ticket), method: :patch, params: { status: status }, class: "button" %><% end %></div></section>
-<section class="panel conversation"><div class="panel-heading"><h2>Konuşma</h2><span class="muted"><%= @comments.size %> yanıt</span></div><div class="comments"><% @comments.each do |comment| %><article class="comment <%= comment.author_role %>"><div class="comment-meta"><strong><%= comment.author_name %></strong><span><%= comment.author_role == 'agent' ? 'Temsilci' : 'Müşteri' %> · <%= comment.created_at.strftime('%d.%m %H:%M') %></span></div><%= simple_format comment.body %><% if comment.prevented_reopen? %><span class="guard-label">✦ Teşekkür filtresi çözümü korudu</span><% end %></article><% end %><% if @comments.empty? %><p class="muted">Henüz yanıt yok. İlk yanıtı aşağıdan gönderin.</p><% end %></div>
-<%= form_with url: reply_ticket_path(@ticket), class: "reply-form" do |f| %><%= f.label :author_role, "Yanıt türü" %><%= f.select :author_role, [["Temsilci Yanıtı", "agent"], ["Müşteri Yanıtı Simülasyonu", "customer"]] %><%= f.label :body, "Mesaj" %><%= f.text_area :body, required: true, rows: 3, maxlength: 10000, placeholder: "Yanıtınızı yazın…" %><%= f.submit "Yanıtı gönder →", class: "button primary" %><% end %></section>
-</div><aside class="detail-side"><section class="panel side-card"><div class="eyebrow">HİZMET SEVİYESİ</div><h2>SLA takibi</h2><%= render "sla", ticket: @ticket %><dl><dt>Son tarih</dt><dd><%= @ticket.sla_due_at.strftime('%d.%m.%Y %H:%M') %></dd><dt>İlk yanıt</dt><dd><%= @ticket.first_responded_at&.strftime('%d.%m %H:%M') || 'Bekleniyor' %></dd><dt>Çözüm zamanı</dt><dd><%= @ticket.solved_at&.strftime('%d.%m %H:%M') || 'Henüz çözülmedi' %></dd></dl><%= form_with url: assign_ticket_path(@ticket), method: :patch do |f| %><%= f.label :assigned_agent, "Atanan temsilci" %><%= f.select :assigned_agent, Ticket::AGENTS, selected: @ticket.assigned_agent, prompt: "Temsilci seçin" %><%= f.submit "Temsilci ata", class: "button full" %><% end %></section>
-<section class="panel side-card guard-card"><div class="eyebrow">SMART REOPEN GUARD</div><h2>Çözümünüz koruma altında.</h2><p>Bu talepte <strong><%= @ticket.reopen_prevented_count %></strong> gereksiz yeniden açılma önlendi.</p><small>Hızlı test için talebi önce çözülen durumuna getirin.</small><%= button_to "Müşteri 'Teşekkürler!' Yazsın (100 Puanlık Pas Testi)", reply_ticket_path(@ticket), params: { author_role: "customer", body: "Teşekkürler!" }, class: "button full" %><%= button_to "Müşteri 'Hâlâ Çalışmıyor!' Yazsın", reply_ticket_path(@ticket), params: { author_role: "customer", body: "Hâlâ Çalışmıyor!" }, class: "button full" %></section>
-<% if Rails.env.development? %><section class="panel side-card"><div class="eyebrow">SUNUM ARAÇLARI</div><%= button_to "Simülasyon: Zamanı +5 Saat İleri Sar (SLA Testi)", simulate_ticket_path(@ticket), class: "button full warning" %><small>Başlangıç ve SLA son tarihi 5 saat geriye alınır.</small></section><% end %></aside></div>
+<section class="page-heading">
+  <div>
+    <%= link_to "← Tüm talepler", tickets_path, class: "back" %>
+    <h1><%= @ticket.title %></h1>
+    <p>
+      #PD-<%= @ticket.id.to_s.rjust(4, '0') %> · <%= @ticket.customer_name %> · <%= @ticket.customer_email %>
+      <% if @ticket.source_type == "agent" %>
+        <span class="badge agent" style="margin-left: 8px;">🤖 Agent Incident (<%= @ticket.source_agent_id %>)</span>
+      <% end %>
+      <% if @ticket.sarcasm_detected? %>
+        <span class="badge sarcasm" style="margin-left: 8px;">⚠️ Sarkazm & Kriz Tespiti</span>
+      <% end %>
+    </p>
+  </div>
+  <span class="badge <%= @ticket.status %>"><%= status_label(@ticket.status) %></span>
+</section>
+
+<% if @ticket.hitl_status == "pending_human_approval" %>
+  <div class="hitl-banner">
+    <h3>🤖 AI Triage & Human-in-the-Loop (HITL) Onay Bekliyor</h3>
+    <p>
+      <strong>Teşhis:</strong> <%= @ticket.ai_triage_diagnosis %><br>
+      <strong>Önerilen Aksiyon:</strong> <%= @ticket.ai_proposed_action %>
+    </p>
+    <div class="hitl-actions">
+      <%= button_to "✓ İnsan Mühendis Onayı Ver (Execute Fix)", approve_hitl_ticket_path(@ticket), method: :post, class: "button success" %>
+      <%= button_to "✗ Reddet & Manuel Devral", reject_hitl_ticket_path(@ticket), method: :post, class: "button danger" %>
+    </div>
+  </div>
+<% elsif @ticket.source_type == "agent" && @ticket.hitl_status == "approved" %>
+  <div class="hitl-banner" style="background: #f0fdf4; border-color: #bbf7d0;">
+    <h3 style="color: #166534;">✓ HITL İnsan Mühendis Onayı Tamamlandı</h3>
+    <p style="color: #14532d;">
+      <strong>Uygulanan AI Aksiyonu:</strong> <%= @ticket.ai_proposed_action %>
+    </p>
+  </div>
+<% end %>
+
+<% if @ticket.sarcasm_detected? %>
+  <div class="hitl-banner" style="background: #fef2f2; border-color: #fecaca;">
+    <h3 style="color: #991b1b;">⚠️ LLM Sarkazm Alarmı: Müşterinin İğneleyici Öfkesi Yakalandı</h3>
+    <p style="color: #7f1d1d;">
+      Müşteri mesajındaki görünürde teşekkür ifadelerinin ardındaki derin hoşnutsuzluk LLM tarafından tespit edildi.
+      Talep kapatılmadı veya çözüldü bırakılmadı; derhal <strong>ACİL (Urgent: 1 Saat)</strong> SLA politikasına yükseltildi.
+    </p>
+  </div>
+<% end %>
+
+<div class="detail-grid">
+  <div>
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Talep akışı</h2>
+        <span class="priority <%= @ticket.priority %>">● <%= priority_label(@ticket.priority) %></span>
+      </div>
+      <div class="flow">
+        <% Ticket::STATUSES.each_with_index do |status, i| %>
+          <span class="<%= @ticket.status == status ? 'current' : '' %>">
+            <b><%= i + 1 %></b><%= status_label(status) %>
+          </span>
+        <% end %>
+      </div>
+      <div class="description">
+        <%= simple_format @ticket.description %>
+      </div>
+      <div class="actions">
+        <% Ticket::TRANSITIONS.fetch(@ticket.status).each do |status| %>
+          <%= button_to "#{status_label(status)} olarak işaretle", transition_ticket_path(@ticket), method: :patch, params: { status: status }, class: "button" %>
+        <% end %>
+      </div>
+    </section>
+
+    <section class="panel conversation">
+      <div class="panel-heading">
+        <h2>Konuşma & Olay Günlüğü</h2>
+        <span class="muted"><%= @comments.size %> kayıt</span>
+      </div>
+      <div class="comments">
+        <% @comments.each do |comment| %>
+          <article class="comment <%= comment.author_role %>">
+            <div class="comment-meta">
+              <strong><%= comment.author_name %></strong>
+              <span>
+                <%= comment.author_role == 'agent' ? 'Temsilci / Sistem' : 'Müşteri' %> ·
+                <%= comment.created_at.strftime('%d.%m %H:%M') %>
+              </span>
+            </div>
+            <%= simple_format comment.body %>
+            <% if comment.sarcasm_detected? %>
+              <span class="guard-label danger">⚠️ LLM: Sarkazm / Alaycı Kriz Tespit Edildi (SLA Acile Yükseltildi)</span>
+            <% elsif comment.prevented_reopen? %>
+              <span class="guard-label">✦ LLM: Samimi Teşekkür Doğrulandı (Çözüm Korundu)</span>
+            <% end %>
+          </article>
+        <% end %>
+        <% if @comments.empty? %>
+          <p class="muted">Henüz yanıt yok. İlk yanıtı aşağıdan gönderin.</p>
+        <% end %>
+      </div>
+
+      <%= form_with url: reply_ticket_path(@ticket), class: "reply-form" do |f| %>
+        <%= f.label :author_role, "Yanıt türü" %>
+        <%= f.select :author_role, [["Temsilci Yanıtı", "agent"], ["Müşteri Yanıtı Simülasyonu", "customer"]] %>
+        <%= f.label :body, "Mesaj" %>
+        <%= f.text_area :body, required: true, rows: 3, maxlength: 10000, placeholder: "Yanıtınızı yazın…" %>
+        <%= f.submit "Yanıtı gönder →", class: "button primary" %>
+      <% end %>
+    </section>
+  </div>
+
+  <aside class="detail-side">
+    <section class="panel side-card">
+      <div class="eyebrow">HİZMET SEVİYESİ</div>
+      <h2>SLA takibi</h2>
+      <%= render "sla", ticket: @ticket %>
+      <dl>
+        <dt>Öncelik Seviyesi</dt>
+        <dd>
+          <span class="priority <%= @ticket.priority %>">● <%= priority_label(@ticket.priority) %></span>
+          <% if @ticket.sarcasm_detected? %>
+            <small style="color: #dc2626; display: inline;">(Sarkazm ile Acile Çekildi)</small>
+          <% end %>
+        </dd>
+        <dt>Son tarih</dt>
+        <dd><%= @ticket.sla_due_at.strftime('%d.%m.%Y %H:%M') %></dd>
+        <dt>İlk yanıt</dt>
+        <dd><%= @ticket.first_responded_at&.strftime('%d.%m %H:%M') || 'Bekleniyor' %></dd>
+        <dt>Çözüm zamanı</dt>
+        <dd><%= @ticket.solved_at&.strftime('%d.%m %H:%M') || 'Henüz çözülmedi' %></dd>
+      </dl>
+      <%= form_with url: assign_ticket_path(@ticket), method: :patch do |f| %>
+        <%= f.label :assigned_agent, "Atanan temsilci" %>
+        <%= f.select :assigned_agent, Ticket::AGENTS, selected: @ticket.assigned_agent, prompt: "Temsilci seçin" %>
+        <%= f.submit "Temsilci ata", class: "button full" %>
+      <% end %>
+    </section>
+
+    <section class="panel side-card guard-card">
+      <div class="eyebrow">LLM INTENT & SARCASM GUARD</div>
+      <h2>Akıllı Karar Katmanı</h2>
+      <p>Bu talepte <strong><%= @ticket.reopen_prevented_count %></strong> samimi teşekkür çözümü korudu.</p>
+      <small><strong>Sunum Hızlı Testleri:</strong> (Talebi önce 'çözülen' durumuna getirin)</small>
+      <%= button_to "1. Samimi Teşekkür ('Teşekkürler, çözüldü!')", reply_ticket_path(@ticket), params: { author_role: "customer", body: "Teşekkürler, sorun tamamen çözüldü!" }, class: "button full", title: "LLM samimi teşekkürü algılar, talep solved kalır" %>
+      <%= button_to "2. Sarkastik Teşekkür ('Harika sistem 3 gündür çöktü teşekkürler!')", reply_ticket_path(@ticket), params: { author_role: "customer", body: "Harika sistem yapmışsınız, 3 gündür çöktü çok teşekkürler!" }, class: "button full warning", title: "LLM iğnelemeyi algılar, talebi açar ve SLA'i acile yükseltir" %>
+      <%= button_to "3. Açık Sorun Bildirimi ('Hâlâ Çalışmıyor!')", reply_ticket_path(@ticket), params: { author_role: "customer", body: "Hâlâ Çalışmıyor!" }, class: "button full", title: "Normal hata bildirimi, talep açılır" %>
+    </section>
+
+    <% if Rails.env.development? %>
+      <section class="panel side-card">
+        <div class="eyebrow">SUNUM ARAÇLARI</div>
+        <%= button_to "Simülasyon: Zamanı +5 Saat İleri Sar (SLA Testi)", simulate_ticket_path(@ticket), class: "button full warning" %>
+        <small>Başlangıç ve SLA son tarihi 5 saat geriye alınır.</small>
+      </section>
+    <% end %>
+  </aside>
+</div>

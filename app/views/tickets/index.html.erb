@@ -1,15 +1,101 @@
-<section class="page-heading"><div><div class="eyebrow">OPERASYON MERKEZİ</div><h1>Her talep kontrol altında.</h1><p>Ekibin iş yükünü, SLA hedeflerini ve müşteri yanıtlarını tek yerden yönetin.</p></div><%= link_to "+ Yeni talep", new_ticket_path, class: "button primary" %></section>
-<section class="metrics">
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">AGENT-FIRST OPERASYON MERKEZİ</div>
+    <h1>Her talep kontrol altında.</h1>
+    <p>İnsan & AI Agent taleplerini, SLA hedeflerini ve LLM Triage kararlarını tek yerden yönetin.</p>
+  </div>
+  <div style="display: flex; gap: 10px;">
+    <%= button_to "🤖 Dış Agent Incident Simüle Et", simulate_agent_incident_tickets_path, method: :post, class: "button secondary", title: "Dış izleme botunun API üzerinden incident açmasını simüle eder" %>
+    <%= link_to "+ Yeni talep", new_ticket_path, class: "button primary" %>
+  </div>
+</section>
+
+<section class="metrics" style="grid-template-columns: repeat(6, minmax(0, 1fr));">
   <div class="metric"><span>Toplam Talep</span><strong><%= @total %></strong><small>Tüm destek kayıtları</small></div>
   <div class="metric danger"><span>SLA Aşımı Olanlar</span><strong><%= @breached %></strong><small>SLA Breached · Takip gerekli</small></div>
   <div class="metric"><span>Çözülenler</span><strong><%= @solved %></strong><small>Tamamlanan talepler</small></div>
-  <div class="metric guarded"><span>Teşekkür Filtresi ile Korunan Çözümler</span><strong><%= @protected %><em>↗</em></strong><small>Gereksiz yeniden açılma önlendi</small></div>
+  <div class="metric guarded"><span>LLM ile Korunan</span><strong><%= @protected %><em>↗</em></strong><small>Samimi teşekkür filtresi</small></div>
+  <div class="metric agent-metric"><span>🤖 Agent Talepleri</span><strong><%= @agent_count %></strong><small>Makine kaynaklı incident</small></div>
+  <div class="metric sarcasm-metric"><span>⚠️ Sarkazm Alarmı</span><strong><%= @sarcasm_count %></strong><small>LLM alaycı öfke tespiti</small></div>
 </section>
-<section class="panel"><div class="panel-heading"><h2>Destek talepleri</h2><span class="muted"><%= @tickets.count %> kayıt</span></div>
-  <nav class="tabs" aria-label="Talep filtreleri"><%= link_to "Tümü", tickets_path, class: @filter.blank? ? "active" : "" %><% Ticket::STATUSES.each do |status| %><%= link_to status_label(status), tickets_path(filter: status), class: @filter == status ? "active" : "" %><% end %><%= link_to "SLA Aşımı", tickets_path(filter: "breached"), class: @filter == "breached" ? "active" : "" %></nav>
-  <div class="table-scroll"><table><thead><tr><th>TALEP / MÜŞTERİ</th><th>DURUM</th><th>ÖNCELİK</th><th>TEMSİLCİ</th><th>SLA DURUMU</th><th></th></tr></thead><tbody>
-  <% @tickets.each do |ticket| %><tr><td><%= link_to ticket.title, ticket, class: "ticket-title" %><small>#PD-<%= ticket.id.to_s.rjust(4, '0') %> · <%= ticket.customer_name %></small></td><td><span class="badge <%= ticket.status %>"><%= status_label(ticket.status) %></span></td><td><span class="priority <%= ticket.priority %>">● <%= priority_label(ticket.priority) %></span></td><td><%= ticket.assigned_agent.presence || "Atanmadı" %></td><td><%= render "sla", ticket: ticket %></td><td><%= link_to "→", ticket, aria: { label: "Talebi görüntüle" }, class: "arrow" %></td></tr><% end %>
-  <% if @tickets.empty? %><tr><td colspan="6" class="empty">Bu görünümde talep yok.</td></tr><% end %>
-  </tbody></table></div>
+
+<section class="panel">
+  <div class="panel-heading">
+    <h2>Destek talepleri</h2>
+    <span class="muted"><%= @tickets.count %> kayıt listeleniyor</span>
+  </div>
+  <nav class="tabs" aria-label="Talep filtreleri">
+    <%= link_to "Tümü", tickets_path, class: @filter.blank? ? "active" : "" %>
+    <% Ticket::STATUSES.each do |status| %>
+      <%= link_to status_label(status), tickets_path(filter: status), class: @filter == status ? "active" : "" %>
+    <% end %>
+    <%= link_to "SLA Aşımı", tickets_path(filter: "breached"), class: @filter == "breached" ? "active" : "" %>
+    <%= link_to "🤖 Agent Kaynaklı (#{@agent_count})", tickets_path(filter: "agent"), class: @filter == "agent" ? "active" : "" %>
+    <%= link_to "⚠️ Sarkazm Uyarılı (#{@sarcasm_count})", tickets_path(filter: "sarcasm"), class: @filter == "sarcasm" ? "active" : "" %>
+    <%= link_to "⏳ HITL Onay Bekleyen (#{@pending_hitl_count})", tickets_path(filter: "hitl"), class: @filter == "hitl" ? "active" : "" %>
+  </nav>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>TALEP / KAYNAK</th>
+          <th>DURUM</th>
+          <th>ÖNCELİK</th>
+          <th>KAYNAK TÜRÜ</th>
+          <th>TEMSİLCİ / HITL</th>
+          <th>SLA DURUMU</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @tickets.each do |ticket| %>
+          <tr>
+            <td>
+              <%= link_to ticket.title, ticket, class: "ticket-title" %>
+              <small>
+                #PD-<%= ticket.id.to_s.rjust(4, '0') %> · <%= ticket.customer_name %>
+                <% if ticket.sarcasm_detected? %>
+                  <span class="badge sarcasm" style="margin-left: 6px;">⚠️ Sarkazm & Kriz</span>
+                <% end %>
+                <% if ticket.hitl_status == "pending_human_approval" %>
+                  <span class="badge hitl" style="margin-left: 6px;">⏳ İnsan Onayı Bekliyor</span>
+                <% end %>
+              </small>
+            </td>
+            <td><span class="badge <%= ticket.status %>"><%= status_label(ticket.status) %></span></td>
+            <td><span class="priority <%= ticket.priority %>">● <%= priority_label(ticket.priority) %></span></td>
+            <td>
+              <% if ticket.source_type == "agent" %>
+                <span class="badge agent">🤖 Agent (<%= ticket.source_agent_id %>)</span>
+              <% else %>
+                <span style="color: #6b7280; font-size: 11px;">👤 İnsan Müşteri</span>
+              <% end %>
+            </td>
+            <td>
+              <% if ticket.hitl_status == "pending_human_approval" %>
+                <strong style="color: #d97706; font-size: 11px;">HITL Müdahale Gerekli</strong>
+              <% else %>
+                <%= ticket.assigned_agent.presence || "Atanmadı" %>
+              <% end %>
+            </td>
+            <td><%= render "sla", ticket: ticket %></td>
+            <td><%= link_to "→", ticket, aria: { label: "Talebi görüntüle" }, class: "arrow" %></td>
+          </tr>
+        <% end %>
+        <% if @tickets.empty? %>
+          <tr><td colspan="7" class="empty">Bu filtreye uygun talep bulunamadı.</td></tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
 </section>
-<div class="insight"><span class="insight-icon">✦</span><div><strong>Küçük bir teşekkür, büyük bir fark.</strong><p>Smart Reopen Guard, nezaket yanıtlarını tanır. Çözümünüz korunur, SLA saati gereksiz yere yeniden başlamaz.</p></div><span class="badge solved">FİLTRE AKTİF</span></div>
+
+<div class="insight">
+  <span class="insight-icon">✦</span>
+  <div>
+    <strong>Slop Değil, LLM Zekâsı & Agent-First Mimari:</strong>
+    <p>PulseDesk; regex kelime araması yerine LLM tabanlı niyet analizi (samimi teşekkür vs. sarkastik öfke) yapar, dış sistemlerdeki AI Agent'lardan structured incident kabul eder ve kritik durumlarda Human-in-the-Loop (HITL) onayı talep eder.</p>
+  </div>
+  <span class="badge solved">AGENT-FIRST AKTİF</span>
+</div>
