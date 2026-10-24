@@ -1,8 +1,8 @@
 require "test_helper"
 
 class SeedsTest < ActiveSupport::TestCase
-  test "seeds create five examples and preserve edits on repeated runs" do
-    assert_difference "Ticket.count", 5 do
+  test "seeds create seven examples and preserve edits on repeated runs" do
+    assert_difference "Ticket.count", 7 do
       Rails.application.load_seed
     end
     ticket = Ticket.find_by!(title: "SSO oturum açma hatası")
